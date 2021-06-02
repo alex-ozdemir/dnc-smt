@@ -7,30 +7,32 @@ import re
 import os
 import functools as ft
 import time
+import pdb
 
 gg = pygg.init()
 
-SOLVE = "cvc4"
-SPLIT = f"{os.path.split(os.path.abspath(__file__))[0]}/split.py"
+SOLVE = f"{os.path.split(os.path.abspath(__file__))[0]}/cvc5"
+SPLIT = f"{os.path.split(os.path.abspath(__file__))[0]}/cvc5"
 SAT_REGEX = "^sat$"
 UNSAT_REGEX = "^unsat$"
 
 gg.install(SOLVE)
-gg.install(SPLIT)
+#gg.install(SPLIT)
 
 
 class Result(enum.Enum):
-    SAT = "SAT"
-    UNSAT = "UNSAT"
-    TIMEOUT = "TIMEOUT"
+    SAT = "sat"
+    UNSAT = "unsat"
+    TIMEOUT = "timeout"
 
 
 def merge_query_and_cube(base_query_path: str, cube_path: str) -> str:
-    OUTPUT_PATH = "merged.cnf"
+    # skip if contains expected result .
+    OUTPUT_PATH = "merged.smt2"
     with open(OUTPUT_PATH, "w") as fout:
         with open(base_query_path) as fin:
             for l in fin.readlines():
-                if "check-sat" not in l:
+                if "check-sat" not in l and ":status" not in l and "(exit)" not in l:
                     fout.write(l)
             with open(cube_path) as fcube:
                 fout.write("(assert ")
@@ -84,13 +86,22 @@ def solve_cube(
         next_timeout = timeout if initial_splits == 0 else timeout * timeout_factor
         CUBES = "cubes"
         sub.run(
-            [gg.bin(SPLIT).path(), merged_path, "-o", CUBES, "-n", str(splits_now)],
+            [gg.bin(SPLIT).path(), merged_path, "--lang", "smt2", "--write-partitions-to", CUBES, "--compute-partitions", str(splits_now)],
             check=True,
         )
+        number_of_splits = 0
+        # If CUBES is a file, 
+        # count number of cubes,
+        # fill in with assert false 
+        # merged_cube = gg.str_value(f"(and {orig_cube} {false})\n")
+        # In the case where CUBES is not a file, do the same thing
+        print(open(CUBES).read())
         with open(CUBES) as f:
             subsolves = []
             orig_cube = cube.as_str().strip()
             for l in f.readlines():
+                number_of_splits += 1
+                print("cube: ", l )
                 l = l.strip()
                 if len(l) > 0:
                     merged_cube = gg.str_value(f"(and {orig_cube} {l})\n")
@@ -105,6 +116,20 @@ def solve_cube(
                             timeout_factor,
                         )
                     )
+        for i in range(0, splits_now - number_of_splits):
+            merged_cube = gg.str_value(f"(and {orig_cube} false)\n")
+            subsolves.append(
+                gg.thunk(
+                    solve_cube,
+                    query,
+                    merged_cube,
+                    0,
+                    splits,
+                    next_timeout,
+                    timeout_factor,
+                )
+            )
+            
         os.remove(CUBES)
         return ft.reduce(lambda a, b: gg.thunk(merge, a, b), subsolves)
     finally:

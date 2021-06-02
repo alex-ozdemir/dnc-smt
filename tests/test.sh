@@ -1,6 +1,12 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env sh
 
 set -ex
+
+export PYTHONPATH=/homes/haozewu/CnC/gg/gg/tools/pygg/:$PYTHONPATH
+PATH=/homes/haozewu/CnC/gg/frontend:$PATH
+
+source /homes/haozewu/py3.6/bin/activate
+
 
 function runtest {
   p=$1
@@ -19,3 +25,5 @@ function runtest {
 runtest ./smt2/sat.smt2 SAT
 runtest ./smt2/unsat.smt2 UNSAT
 
+
+deactivate

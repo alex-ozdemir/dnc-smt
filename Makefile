@@ -1,2 +1,2 @@
 test:
-	cd tests && ./test.zsh
+	cd tests && ./test.sh
