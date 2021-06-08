@@ -7,7 +7,8 @@ import re
 import os
 import functools as ft
 import time
-import pdb
+from typing import List
+import pdb 
 
 gg = pygg.init()
 
@@ -64,6 +65,32 @@ def base_solve(smt2_path: str, timeout: float) -> Result:
         return Result.TIMEOUT
 
 
+def split(orig_cube: pygg.Value, merged_path: str, splits: int) -> (List[str], bool):
+    CUBES = "cubes"
+    r = sub.run(
+        [gg.bin(SPLIT).path(), merged_path, "--lang", "smt2", "--write-partitions-to", CUBES, "--compute-partitions", str(splits)],
+        check=True, stdout=sub.PIPE, stderr=sub.STDOUT
+    )
+    o = r.stdout.decode()
+    if re.search(SAT_REGEX, o) is not None:
+        os.remove(CUBES)
+        return [], True
+    cubes = []
+    with open(CUBES) as f:
+        subsolves = []
+        orig_cube = orig_cube.as_str().strip()
+        for line in f.readlines():
+            line = line.strip()
+            if len(line) > 0:
+                cubes.append(f"(and {orig_cube} {line})\n")
+    os.remove(CUBES)
+    while len(cubes) < splits:
+        cubes.append("false\n")
+    if len(cubes) > splits:
+        raise Exception(f"Wanted {splits} cubes but got {len(cubes)} cubes from the splitter.")
+    return cubes, False
+
+
 @gg.thunk_fn()
 def solve_cube(
     query: pygg.Value,
@@ -73,7 +100,7 @@ def solve_cube(
     timeout: float,
     timeout_factor: float,
 ) -> pygg.Output:
-    """ Solve a (query, cube) pair """
+    """Solve a (query, cube) pair"""
     merged_path = merge_query_and_cube(query.path(), cube.path())
     try:
         # Attempt solve, if no initial splits
@@ -84,53 +111,21 @@ def solve_cube(
         # Fallback to splitting
         splits_now = initial_splits if initial_splits > 0 else splits
         next_timeout = timeout if initial_splits == 0 else timeout * timeout_factor
-        CUBES = "cubes"
-        sub.run(
-            [gg.bin(SPLIT).path(), merged_path, "--lang", "smt2", "--write-partitions-to", CUBES, "--compute-partitions", str(splits_now)],
-            check=True,
-        )
-        number_of_splits = 0
-        # If CUBES is a file, 
-        # count number of cubes,
-        # fill in with assert false 
-        # merged_cube = gg.str_value(f"(and {orig_cube} {false})\n")
-        # In the case where CUBES is not a file, do the same thing
-        print(open(CUBES).read())
-        with open(CUBES) as f:
-            subsolves = []
-            orig_cube = cube.as_str().strip()
-            for l in f.readlines():
-                number_of_splits += 1
-                print("cube: ", l )
-                l = l.strip()
-                if len(l) > 0:
-                    merged_cube = gg.str_value(f"(and {orig_cube} {l})\n")
-                    subsolves.append(
-                        gg.thunk(
-                            solve_cube,
-                            query,
-                            merged_cube,
-                            0,
-                            splits,
-                            next_timeout,
-                            timeout_factor,
-                        )
-                    )
-        for i in range(0, splits_now - number_of_splits):
-            merged_cube = gg.str_value(f"(and {orig_cube} false)\n")
-            subsolves.append(
-                gg.thunk(
-                    solve_cube,
-                    query,
-                    merged_cube,
-                    0,
-                    splits,
-                    next_timeout,
-                    timeout_factor,
-                )
+        new_cubes, sat = split(cube, merged_path, splits_now)
+        if sat:
+            return gg.str_value(str(Result.SAT.name))
+        subsolves = [
+            gg.thunk(
+                solve_cube,
+                query,
+                gg.str_value(new_cube),
+                0,
+                splits,
+                next_timeout,
+                timeout_factor,
             )
-            
-        os.remove(CUBES)
+            for new_cube in new_cubes
+        ]
         return ft.reduce(lambda a, b: gg.thunk(merge, a, b), subsolves)
     finally:
         os.remove(merged_path)
@@ -144,7 +139,7 @@ def solve(
     timeout: float,
     timeout_factor: float,
 ) -> pygg.Output:
-    """ Solve a query """
+    """Solve a query"""
     null_cube = gg.str_value("true\n")
     return gg.thunk(
         solve_cube, query, null_cube, initial_splits, splits, timeout, timeout_factor
@@ -153,7 +148,7 @@ def solve(
 
 @gg.thunk_fn()
 def merge(res_a: pygg.Value, res_b: pygg.Value) -> pygg.Output:
-    """ Combine SAT and UNSAT answers to subproblems """
+    """Combine SAT and UNSAT answers to subproblems"""
     if (
         res_a.as_str().strip() == Result.SAT.name
         or res_b.as_str().strip() == Result.SAT.name
