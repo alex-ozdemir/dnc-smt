@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-export PYTHONPATH=/homes/haozewu/CnC/gg/gg/tools/pygg/:/homes/haozewu/ParallelSMT/dnc-smt/:$PYTHONPATH
-PATH=/homes/haozewu/CnC/gg/frontend:$PATH
+export GG_THUNK_EXECUTE_TEMPLATE=/export/stanford/barrettlab/parallel-smt/
+export PYTHONPATH=/homes/haozewu/ParallelSMT/dnc-smt/gg/tools/pygg/:/homes/haozewu/ParallelSMT/dnc-smt/:$PYTHONPATH
+PATH=/homes/haozewu/ParallelSMT/dnc-smt/frontend:$PATH
 
 source /homes/haozewu/py3.6/bin/activate
 
