@@ -7,7 +7,7 @@ import re
 import os
 import functools as ft
 import time
-from typing import List
+from typing import List, Optional
 import pdb 
 
 gg = pygg.init()
@@ -126,7 +126,7 @@ def solve_cube(
             )
             for new_cube in new_cubes
         ]
-        return ft.reduce(lambda a, b: gg.thunk(merge, a, b), subsolves)
+        return ft.reduce(lambda a, b: gg.thunk(merge_fut, a, b), subsolves)
     finally:
         os.remove(merged_path)
 
@@ -156,6 +156,20 @@ def merge(res_a: pygg.Value, res_b: pygg.Value) -> pygg.Output:
         return gg.str_value(Result.SAT.name)
     else:
         return res_a
+
+
+@gg.thunk_fn()
+def merge_fut(a: Optional[pygg.Value], b: Optional[pygg.Value]) -> pygg.Output:
+    """Combine SAT and UNSAT answers to subproblems"""
+    if a is not None and a.as_str().strip() == Result.SAT.name:
+        return a
+    elif b is not None and b.as_str().strip() == Result.SAT.name:
+        return b
+    elif a is None or b is None:
+        return gg.this()  # Could not reduce
+    else:
+        assert a.as_str().strip() == Result.UNSAT.name and b.as_str().strip() == Result.UNSAT.name
+        return a
 
 
 gg.main()
