@@ -45,8 +45,6 @@ def merge_query_and_cube(base_query_path: str, cube_path: str) -> str:
 
 def base_solve(smt2_path: str, timeout: float) -> Result:
     args = [gg.bin(SOLVE).path(), "--lang", "smt2", smt2_path]
-    print(f"waiting 1s before solving: {os.path.abspath(smt2_path)}")
-    time.sleep(1)
     try:
         r = sub.run(args, stdout=sub.PIPE, stderr=sub.STDOUT, timeout=timeout)
         if r.returncode == 0:
@@ -106,14 +104,13 @@ def solve_cube(
         # Attempt solve, if no initial splits
         if initial_splits == 0:
             r = base_solve(merged_path, timeout)
-            if r != Result.TIMEOUT:
-                return gg.str_value(str(r.name))
+            return gg.str_value(str(r.value))
         # Fallback to splitting
         splits_now = initial_splits if initial_splits > 0 else splits
         next_timeout = timeout if initial_splits == 0 else timeout * timeout_factor
         new_cubes, sat = split(cube, merged_path, splits_now)
         if sat:
-            return gg.str_value(str(Result.SAT.name))
+            return gg.str_value(str(Result.SAT.value))
         subsolves = [
             gg.thunk(
                 solve_cube,
@@ -150,10 +147,10 @@ def solve(
 def merge(res_a: pygg.Value, res_b: pygg.Value) -> pygg.Output:
     """Combine SAT and UNSAT answers to subproblems"""
     if (
-        res_a.as_str().strip() == Result.SAT.name
-        or res_b.as_str().strip() == Result.SAT.name
+        res_a.as_str().strip().lower() == Result.SAT.value
+        or res_b.as_str().strip().lower() == Result.SAT.value
     ):
-        return gg.str_value(Result.SAT.name)
+        return gg.str_value(Result.SAT.value)
     else:
         return res_a
 
@@ -161,14 +158,14 @@ def merge(res_a: pygg.Value, res_b: pygg.Value) -> pygg.Output:
 @gg.thunk_fn()
 def merge_fut(a: Optional[pygg.Value], b: Optional[pygg.Value]) -> pygg.Output:
     """Combine SAT and UNSAT answers to subproblems"""
-    if a is not None and a.as_str().strip() == Result.SAT.name:
+    if a is not None and a.as_str().strip().lower() == Result.SAT.value:
         return a
-    elif b is not None and b.as_str().strip() == Result.SAT.name:
+    elif b is not None and b.as_str().strip().lower() == Result.SAT.value:
         return b
     elif a is None or b is None:
         return gg.this()  # Could not reduce
     else:
-        assert a.as_str().strip() == Result.UNSAT.name and b.as_str().strip() == Result.UNSAT.name
+        assert a.as_str().strip().lower() == Result.UNSAT.value and b.as_str().strip().lower() == Result.UNSAT.value
         return a
 
 
