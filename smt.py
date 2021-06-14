@@ -16,6 +16,7 @@ SOLVE = f"{os.path.split(os.path.abspath(__file__))[0]}/cvc5"
 SPLIT = f"{os.path.split(os.path.abspath(__file__))[0]}/cvc5"
 SAT_REGEX = "^sat$"
 UNSAT_REGEX = "^unsat$"
+UNKNOWN_REGEX = "^unknown$"
 
 gg.install(SOLVE)
 #gg.install(SPLIT)
@@ -25,6 +26,7 @@ class Result(enum.Enum):
     SAT = "sat"
     UNSAT = "unsat"
     TIMEOUT = "timeout"
+    UNKNOWN = "unknown"
 
 
 def merge_query_and_cube(base_query_path: str, cube_path: str) -> str:
@@ -53,6 +55,8 @@ def base_solve(smt2_path: str, timeout: float) -> Result:
                 return Result.SAT
             elif re.search(UNSAT_REGEX, o) is not None:
                 return Result.UNSAT
+            elif re.search(UNKNOWN_REGEX, o) is not None:
+                return Result.UNKNOWN
             else:
                 print(r.stdout.decode())
                 raise Exception("Could not find 'sat' or 'unsat'")
@@ -104,7 +108,8 @@ def solve_cube(
         # Attempt solve, if no initial splits
         if initial_splits == 0:
             r = base_solve(merged_path, timeout)
-            return gg.str_value(str(r.value))
+            if r != Result.TIMEOUT and r != Result.UNKNOWN:
+                return gg.str_value(str(r.value))
         # Fallback to splitting
         splits_now = initial_splits if initial_splits > 0 else splits
         next_timeout = timeout if initial_splits == 0 else timeout * timeout_factor
@@ -165,6 +170,7 @@ def merge_fut(a: Optional[pygg.Value], b: Optional[pygg.Value]) -> pygg.Output:
     elif a is None or b is None:
         return gg.this()  # Could not reduce
     else:
+        print(a.as_str(), "merge with", b.as_str())
         assert a.as_str().strip().lower() == Result.UNSAT.value and b.as_str().strip().lower() == Result.UNSAT.value
         return a
 
